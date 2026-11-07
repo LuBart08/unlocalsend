@@ -48,17 +48,44 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.THEOS }}/sdks/iPhoneOS6.1.sdk
-          key: ios-sdk-6.1
+          key: ios-sdk-6.1-v2
 
       - name: Télécharger le SDK iOS 6.1
         if: steps.sdk-cache.outputs.cache-hit != 'true'
         run: |
-          git clone --depth 1 --filter=blob:none --sparse \
-            https://github.com/Sn0wCooder/theos-sdks.git /tmp/sdks
-          git -C /tmp/sdks sparse-checkout set iPhoneOS6.1.sdk
+          SDKDIR="$THEOS/sdks/iPhoneOS6.1.sdk"
+          HDR="$SDKDIR/System/Library/Frameworks/UIKit.framework/Headers/UIKit.h"
           mkdir -p "$THEOS/sdks"
-          cp -a /tmp/sdks/iPhoneOS6.1.sdk "$THEOS/sdks/"
-          ls "$THEOS/sdks/iPhoneOS6.1.sdk/System/Library/Frameworks" | head
+
+          from_folder() {   # $1 = URL du dépôt contenant le dossier iPhoneOS6.1.sdk
+            rm -rf /tmp/sdkrepo "$SDKDIR"
+            git clone --depth 1 --filter=blob:none --sparse "$1" /tmp/sdkrepo || return 1
+            git -C /tmp/sdkrepo sparse-checkout set iPhoneOS6.1.sdk || return 1
+            cp -a /tmp/sdkrepo/iPhoneOS6.1.sdk "$SDKDIR" || return 1
+            [ -f "$HDR" ]
+          }
+
+          from_archive() {  # archive .tbz2 dans yaolinjun/theos-sdks-1
+            rm -rf /tmp/sdkrepo "$SDKDIR"
+            git clone --depth 1 --filter=blob:none --sparse \
+              https://github.com/yaolinjun/theos-sdks-1.git /tmp/sdkrepo || return 1
+            git -C /tmp/sdkrepo sparse-checkout set --no-cone iPhoneOS6.1.sdk.tbz2 || return 1
+            tar -xjf /tmp/sdkrepo/iPhoneOS6.1.sdk.tbz2 -C "$THEOS/sdks" || return 1
+            [ -f "$HDR" ]
+          }
+
+          from_folder https://github.com/Sn0wCooder/theos-sdks.git \
+            || from_folder https://github.com/EachAndOther/Legacy-iOS-SDKs.git \
+            || from_archive \
+            || { echo "::error::SDK iOS 6.1 introuvable ou incomplet"; exit 1; }
+
+          echo "SDK OK :"; ls "$THEOS/sdks"
+
+      - name: Vérifier le SDK et le Makefile
+        run: |
+          ls -la "$THEOS/sdks/"
+          test -f "$THEOS/sdks/iPhoneOS6.1.sdk/System/Library/Frameworks/UIKit.framework/Headers/UIKit.h"
+          grep -nE 'TARGET|SDK|SYSROOT' Makefile || true
 
       - name: Build (.deb)
         run: make package FINALPACKAGE=1 DEBUG=0
