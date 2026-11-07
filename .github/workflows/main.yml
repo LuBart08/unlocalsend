@@ -30,12 +30,18 @@ jobs:
       - name: Installer Theos
         run: git clone --recursive https://github.com/theos/theos.git "$THEOS"
 
-      # Toolchain clang Linux ciblant iOS (armv7 inclus)
       - name: Installer le toolchain iOS
         run: |
+          # libtinfo5 n'existe plus sur Ubuntu 22.04 : lien de secours
+          sudo apt-get install -y libtinfo5 || \
+            sudo ln -sf /lib/x86_64-linux-gnu/libtinfo.so.6 /lib/x86_64-linux-gnu/libtinfo.so.5
+          TMP=$(mktemp -d)
+          curl -fsSL -o "$TMP/toolchain.tar.lzma" \
+            https://github.com/sbingner/llvm-project/releases/latest/download/linux-ios-arm64e-clang-toolchain.tar.lzma
+          tar -xf "$TMP/toolchain.tar.lzma" -C "$TMP"
           mkdir -p "$THEOS/toolchain/linux/iphone"
-          curl -fsSL https://github.com/L1ghtmann/llvm-project/releases/latest/download/iOSToolchain.tar.xz \
-            | tar -xJ -C "$THEOS/toolchain/linux/iphone" --strip-components=1
+          mv "$TMP"/ios-arm64e-clang-toolchain/* "$THEOS/toolchain/linux/iphone/"
+          ls "$THEOS/toolchain/linux/iphone/bin" | head
 
       - name: Cache du SDK iOS 6.1
         id: sdk-cache
