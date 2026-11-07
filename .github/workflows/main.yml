@@ -1,0 +1,80 @@
+name: Build IPA
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write   # nécessaire pour publier la release
+
+env:
+  THEOS: ${{ github.workspace }}/theos
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Dépendances
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential fakeroot rsync curl perl git \
+            python3 zip unzip xz-utils bzip2 libxml2 dpkg
+
+      - name: Installer Theos
+        run: git clone --recursive https://github.com/theos/theos.git "$THEOS"
+
+      # Toolchain clang Linux ciblant iOS (armv7 inclus)
+      - name: Installer le toolchain iOS
+        run: |
+          mkdir -p "$THEOS/toolchain/linux/iphone"
+          curl -fsSL https://github.com/L1ghtmann/llvm-project/releases/latest/download/iOSToolchain.tar.xz \
+            | tar -xJ -C "$THEOS/toolchain/linux/iphone" --strip-components=1
+
+      - name: Cache du SDK iOS 6.1
+        id: sdk-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.THEOS }}/sdks/iPhoneOS6.1.sdk
+          key: ios-sdk-6.1
+
+      - name: Télécharger le SDK iOS 6.1
+        if: steps.sdk-cache.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 --filter=blob:none --sparse \
+            https://github.com/Sn0wCooder/theos-sdks.git /tmp/sdks
+          git -C /tmp/sdks sparse-checkout set iPhoneOS6.1.sdk
+          mkdir -p "$THEOS/sdks"
+          cp -a /tmp/sdks/iPhoneOS6.1.sdk "$THEOS/sdks/"
+          ls "$THEOS/sdks/iPhoneOS6.1.sdk/System/Library/Frameworks" | head
+
+      - name: Build (.deb)
+        run: make package FINALPACKAGE=1 DEBUG=0
+
+      - name: Créer l'IPA
+        run: python3 scripts/package_ipa.py
+
+      - name: Lister les artefacts
+        run: ls -lR packages *.ipa 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: localsend6
+          path: |
+            packages/*.deb
+            **/*.ipa
+          if-no-files-found: error
+
+      - name: Publier la release (tags v*)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            packages/*.deb
+            **/*.ipa
