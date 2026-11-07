@@ -87,6 +87,13 @@ jobs:
           test -f "$THEOS/sdks/iPhoneOS6.1.sdk/System/Library/Frameworks/UIKit.framework/Headers/UIKit.h"
           grep -nE 'TARGET|SDK|SYSROOT' Makefile || true
 
+      - name: Diagnostic libheif / libc++
+        run: |
+          ls -la vendor/heic-ios vendor/heic-ios/lib
+          find vendor/heic-ios -maxdepth 2 \( -name "*.sh" -o -name "README*" -o -name "CMakeLists.txt" -o -name "Makefile" \) || true
+          ls "$THEOS/sdks/iPhoneOS6.1.sdk/usr/lib" | grep -Ei 'c\+\+|stdc' || true
+          file vendor/heic-ios/lib/*.a || true
+
       - name: Build (.deb)
         run: make package FINALPACKAGE=1 DEBUG=0
 
